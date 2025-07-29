@@ -14,7 +14,6 @@ final class AgentMonitor {
     
     init() {
         setupNotificationObservers()
-        notificationManager.setupNotificationCategories()
     }
     
     func setStatusBarController(_ controller: StatusBarController) {
@@ -61,7 +60,7 @@ final class AgentMonitor {
         }
         
         statusBarController?.updateState(isMonitoring: true)
-        notificationManager.sendNotification(.monitoringStarted)
+        notificationManager.sendNotification(NotificationManager.NotificationType.monitoringStarted)
         
         logger.info("Agent monitoring started successfully")
     }
@@ -82,7 +81,7 @@ final class AgentMonitor {
         githubDetector.stopMonitoring()
         
         statusBarController?.updateState(isMonitoring: false)
-        notificationManager.sendNotification(.monitoringStopped)
+        notificationManager.sendNotification(NotificationManager.NotificationType.monitoringStopped)
         
         logger.info("Agent monitoring stopped")
     }
@@ -96,7 +95,7 @@ final class AgentMonitor {
                 try await githubDetector.checkForAgentActivity()
             } catch {
                 logger.error("Error during monitoring cycle: \(error.localizedDescription)")
-                notificationManager.sendNotification(.error(message: error.localizedDescription))
+                notificationManager.sendNotification(NotificationManager.NotificationType.error(message: error.localizedDescription))
             }
         }
     }
@@ -118,7 +117,7 @@ final class AgentMonitor {
         statusBarController?.updateState(isMonitoring: isMonitoring, isAgentActive: isActive)
         
         if !isActive, let taskDescription = userInfo["taskDescription"] as? String {
-            notificationManager.sendNotification(.vsCodeAgentCompleted(taskDescription: taskDescription))
+            notificationManager.sendNotification(NotificationManager.NotificationType.vsCodeAgentCompleted(taskDescription: taskDescription))
         }
     }
     
@@ -128,13 +127,13 @@ final class AgentMonitor {
         if let issueNumber = userInfo["completedIssue"] as? Int,
            let repository = userInfo["repository"] as? String {
             logger.info("GitHub agent completed issue #\(issueNumber) in \(repository)")
-            notificationManager.sendNotification(.githubAgentCompleted(issueNumber: issueNumber, repository: repository))
+            notificationManager.sendNotification(NotificationManager.NotificationType.githubAgentCompleted(issueNumber: issueNumber, repository: repository))
         }
         
         if let prNumber = userInfo["createdPR"] as? Int,
            let repository = userInfo["repository"] as? String {
             logger.info("GitHub agent created PR #\(prNumber) in \(repository)")
-            notificationManager.sendNotification(.githubPullRequestCreated(prNumber: prNumber, repository: repository))
+            notificationManager.sendNotification(NotificationManager.NotificationType.githubPullRequestCreated(prNumber: prNumber, repository: repository))
         }
     }
     

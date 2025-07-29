@@ -5,7 +5,7 @@ import Logging
 final class StatusBarController {
     private let logger = Logger(label: "com.agentsignal.statusbar")
     private var statusItem: NSStatusItem?
-    private var menu: NSMenu?
+    var menu: NSMenu?
     
     private enum MenuState {
         case idle
@@ -159,6 +159,36 @@ final class StatusBarController {
     @objc private func quit() {
         logger.info("Quit requested")
         NSApplication.shared.terminate(nil)
+    }
+    
+    @objc func testNotifications() {
+        logger.info("Testing notifications")
+        let notificationManager = NotificationManager()
+        
+        // Test VS Code Agent notification
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            notificationManager.sendNotification(NotificationManager.NotificationType.vsCodeAgentCompleted(taskDescription: "Generated API endpoints"))
+        }
+        
+        // Test GitHub Issue notification
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            notificationManager.sendNotification(NotificationManager.NotificationType.githubAgentCompleted(issueNumber: 42, repository: "example/repo"))
+        }
+        
+        // Test Pull Request notification
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            notificationManager.sendNotification(NotificationManager.NotificationType.githubPullRequestCreated(prNumber: 123, repository: "example/repo"))
+        }
+        
+        // Test monitoring notifications
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
+            notificationManager.sendNotification(NotificationManager.NotificationType.monitoringStarted)
+        }
+        
+        // Test error notification
+        DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
+            notificationManager.sendNotification(NotificationManager.NotificationType.error(message: "Something went wrong!"))
+        }
     }
 }
 

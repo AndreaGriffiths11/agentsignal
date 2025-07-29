@@ -1,12 +1,14 @@
 import Foundation
+import AppKit
 import UserNotifications
 import Logging
+import WebKit
 
-final class NotificationManager: NSObject {
+public final class NotificationManager: NSObject {
     private let logger = Logger(label: "com.agentsignal.notifications")
-    private let center = UNUserNotificationCenter.current()
+    private var center: UNUserNotificationCenter? = nil
     
-    enum NotificationType {
+    public enum NotificationType: Equatable {
         case vsCodeAgentCompleted(taskDescription: String)
         case githubAgentCompleted(issueNumber: Int, repository: String)
         case githubPullRequestCreated(prNumber: Int, repository: String)
@@ -15,13 +17,15 @@ final class NotificationManager: NSObject {
         case error(message: String)
     }
     
-    override init() {
+    public override init() {
         super.init()
-        center.delegate = self
-        requestNotificationPermission()
+        
+        // For development testing, we'll skip system notifications and just show the pet window
+        logger.info("Initializing notification manager in development mode")
     }
     
     private func requestNotificationPermission() {
+        guard let center = self.center else { return }
         center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
             if let error = error {
                 self?.logger.error("Failed to request notification permission: \(error.localizedDescription)")
@@ -36,60 +40,9 @@ final class NotificationManager: NSObject {
         }
     }
     
-    func sendNotification(_ type: NotificationType) {
-        let content = UNMutableNotificationContent()
+    private func configureNotificationCategories() {
+        guard let center = self.center else { return }
         
-        switch type {
-        case .vsCodeAgentCompleted(let taskDescription):
-            content.title = "VS Code Agent Complete"
-            content.body = "Task completed: \(taskDescription)"
-            content.sound = .default
-            content.categoryIdentifier = "VSCODE_AGENT"
-            
-        case .githubAgentCompleted(let issueNumber, let repository):
-            content.title = "GitHub Agent Complete"
-            content.body = "Issue #\(issueNumber) completed in \(repository)"
-            content.sound = .default
-            content.categoryIdentifier = "GITHUB_AGENT"
-            
-        case .githubPullRequestCreated(let prNumber, let repository):
-            content.title = "Pull Request Created"
-            content.body = "PR #\(prNumber) created in \(repository)"
-            content.sound = .default
-            content.categoryIdentifier = "GITHUB_PR"
-            
-        case .monitoringStarted:
-            content.title = "AgentSignal"
-            content.body = "Monitoring started"
-            content.sound = nil
-            content.categoryIdentifier = "STATUS"
-            
-        case .monitoringStopped:
-            content.title = "AgentSignal"
-            content.body = "Monitoring stopped"
-            content.sound = nil
-            content.categoryIdentifier = "STATUS"
-            
-        case .error(let message):
-            content.title = "AgentSignal Error"
-            content.body = message
-            content.sound = .defaultCritical
-            content.categoryIdentifier = "ERROR"
-        }
-        
-        let identifier = UUID().uuidString
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-        
-        center.add(request) { [weak self] error in
-            if let error = error {
-                self?.logger.error("Failed to send notification: \(error.localizedDescription)")
-            } else {
-                self?.logger.debug("Notification sent: \(content.title)")
-            }
-        }
-    }
-    
-    func setupNotificationCategories() {
         let vsCodeCategory = UNNotificationCategory(
             identifier: "VSCODE_AGENT",
             actions: [],
@@ -148,15 +101,86 @@ final class NotificationManager: NSObject {
         logger.info("Notification categories configured")
     }
     
-    func clearAllNotifications() {
-        center.removeAllPendingNotificationRequests()
-        center.removeAllDeliveredNotifications()
+    public func sendNotification(_ type: NotificationType) {
+        // Create and configure the pet notification window
+        let (pet, message) = getPetAndMessage(for: type)
+        let petView = PetNotificationView(pet: pet, message: message)
+        
+        // Create a window to show the pet
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 80),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        
+        window.contentViewController = petView
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.titlebarAppearsTransparent = true
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        
+        // Position the window in the bottom right corner
+        if let screen = NSScreen.main {
+            let screenRect = screen.visibleFrame
+            let windowRect = window.frame
+            let newOrigin = NSPoint(
+                x: screenRect.maxX - windowRect.width - 20,
+                y: screenRect.minY + 20
+            )
+            window.setFrameOrigin(newOrigin)
+        }
+        
+        // Show the window and automatically close it after a delay
+        window.orderFront(nil)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.5
+                window.animator().alphaValue = 0
+            }, completionHandler: {
+                window.close()
+            })
+        }
+        
+        // Log the notification for development
+        logger.info("Notification: \(message)")
+    }
+    
+    private func getPetAndMessage(for type: NotificationType) -> (PetType, String) {
+        switch type {
+        case .vsCodeAgentCompleted(let taskDescription):
+            return (.dog, "Task completed: \(taskDescription)")
+            
+        case .githubAgentCompleted(let issueNumber, let repository):
+            return (.cat, "Issue #\(issueNumber) completed in \(repository)")
+            
+        case .githubPullRequestCreated(let prNumber, let repository):
+            return (.duck, "PR #\(prNumber) created in \(repository)")
+            
+        case .monitoringStarted:
+            return (.chicken, "Monitoring started")
+            
+        case .monitoringStopped:
+            return (.chicken, "Monitoring stopped")
+            
+        case .error(let message):
+            return (.cat, "Error: \(message)") // Cats look concerned when there's an error!
+        }
+    }
+    
+    public func clearAllNotifications() {
+        center?.removeAllPendingNotificationRequests()
+        center?.removeAllDeliveredNotifications()
         logger.debug("All notifications cleared")
     }
 }
 
 extension NotificationManager: UNUserNotificationCenterDelegate {
-    func userNotificationCenter(
+    public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
@@ -164,7 +188,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         completionHandler([.banner, .sound])
     }
     
-    func userNotificationCenter(
+    public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
